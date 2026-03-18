@@ -122,11 +122,15 @@ class ContinuousScheduler:
 
     def __init__(
         self,
-        on_trigger: Callable[[ScheduleDecision], Awaitable[None]],
+        on_trigger: Callable[[ScheduleDecision], Awaitable[None]] | None = None,
         *,
+        event_bus=None,
+        event_name: str = "schedule",
         tick_seconds: int = 30,
     ) -> None:
         self.on_trigger = on_trigger
+        self.event_bus = event_bus
+        self.event_name = event_name
         self.tick_seconds = tick_seconds
         self._last_trigger_key: str | None = None
         self._last_cleanup_date: str | None = None
@@ -147,7 +151,17 @@ class ContinuousScheduler:
         if trigger_key == self._last_trigger_key:
             return
         self._last_trigger_key = trigger_key
-        await self.on_trigger(decision)
+        if self.event_bus is not None:
+            await self.event_bus.emit(
+                self.event_name,
+                {
+                    "decision": decision,
+                    "scheduled_at_utc": now_utc.isoformat(),
+                },
+            )
+            return
+        if self.on_trigger is not None:
+            await self.on_trigger(decision)
 
     async def _maybe_run_trace_cleanup(self, now_utc: datetime) -> None:
         local_dt = now_utc.astimezone(ZoneInfo(CANONICAL_TZ))

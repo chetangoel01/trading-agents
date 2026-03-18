@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 import uuid
 
 from config import RUN_MODE, WATCHLIST, validate_config
+from events.bus import EventBus
 from graph import build_graph
 from scheduler import ContinuousScheduler, RunKind
 from state import AgentState, FeedbackState, PortfolioSnapshot, RunMetadata
@@ -123,8 +124,10 @@ async def _run_single() -> None:
 
 async def _run_continuous() -> None:
     logger = get_logger("main")
+    bus = EventBus()
 
-    async def _on_trigger(decision):
+    async def _handle_schedule(payload):
+        decision = payload["decision"]
         await run_pipeline_once(
             trigger="schedule",
             run_kind=decision.run_kind,
@@ -132,8 +135,12 @@ async def _run_continuous() -> None:
             run_mode="continuous",
         )
 
-    scheduler = ContinuousScheduler(on_trigger=_on_trigger)
-    logger.info("continuous_scheduler_started", extra={"extra": {"tick_seconds": scheduler.tick_seconds}})
+    bus.subscribe("schedule", _handle_schedule)
+    scheduler = ContinuousScheduler(event_bus=bus, event_name="schedule")
+    logger.info(
+        "continuous_scheduler_started",
+        extra={"extra": {"tick_seconds": scheduler.tick_seconds, "event": "schedule"}},
+    )
     await scheduler.run_forever()
 
 

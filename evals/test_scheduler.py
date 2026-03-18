@@ -4,7 +4,14 @@ from datetime import UTC, datetime
 import os
 from pathlib import Path
 
-from scheduler import RunKind, classify_run_time, cleanup_old_traces, make_schedule_decision
+from events.bus import EventBus
+from scheduler import (
+    ContinuousScheduler,
+    RunKind,
+    classify_run_time,
+    cleanup_old_traces,
+    make_schedule_decision,
+)
 
 
 def test_classify_premarket_analysis_window() -> None:
@@ -61,3 +68,30 @@ def test_cleanup_old_traces_deletes_files_older_than_retention(tmp_path: Path) -
     assert old_file in deleted
     assert not old_file.exists()
     assert fresh_file.exists()
+
+
+async def test_scheduler_emits_event_once_per_time_slot() -> None:
+    bus = EventBus()
+    seen: list[RunKind] = []
+
+    async def _handle(payload):
+        seen.append(payload["decision"].run_kind)
+
+    bus.subscribe("schedule", _handle)
+    scheduler = ContinuousScheduler(event_bus=bus, event_name="schedule")
+    slot = datetime(2026, 3, 18, 14, 0, tzinfo=UTC)  # 10:00 ET
+    await scheduler._maybe_trigger_pipeline(slot)
+    await scheduler._maybe_trigger_pipeline(slot)
+    assert seen == [RunKind.FULL_EXECUTION]
+
+
+async def test_scheduler_falls_back_to_callback_when_no_event_bus() -> None:
+    seen: list[RunKind] = []
+
+    async def _cb(decision):
+        seen.append(decision.run_kind)
+
+    scheduler = ContinuousScheduler(on_trigger=_cb)
+    slot = datetime(2026, 3, 18, 13, 0, tzinfo=UTC)  # 9:00 ET
+    await scheduler._maybe_trigger_pipeline(slot)
+    assert seen == [RunKind.ANALYSIS_ONLY]
