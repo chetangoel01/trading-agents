@@ -21,7 +21,7 @@ from state import ActionType, AgentState
 def build_graph():
     """Build and compile the LangGraph pipeline."""
     try:
-        from langgraph.graph import StateGraph
+        from langgraph.graph import END, START, StateGraph
     except Exception as exc:  # pragma: no cover - dependency availability
         raise RuntimeError("langgraph is not installed") from exc
 
@@ -54,11 +54,18 @@ def build_graph():
     graph.add_node("feedback", feedback_agent.run)
     graph.add_node("format", formatter_agent.run)
 
-    graph.set_entry_point("fetch_sec")
-    graph.add_edge("fetch_sec", "fetch_news")
-    graph.add_edge("fetch_news", "fetch_transcripts")
-    graph.add_edge("fetch_transcripts", "fetch_social")
-    graph.add_edge("fetch_social", "fetch_market_data")
+    # Parallel fetch fan-out from START.
+    graph.add_edge(START, "fetch_sec")
+    graph.add_edge(START, "fetch_news")
+    graph.add_edge(START, "fetch_transcripts")
+    graph.add_edge(START, "fetch_social")
+    graph.add_edge(START, "fetch_market_data")
+
+    # Fan-in to extraction.
+    graph.add_edge("fetch_sec", "extract")
+    graph.add_edge("fetch_news", "extract")
+    graph.add_edge("fetch_transcripts", "extract")
+    graph.add_edge("fetch_social", "extract")
     graph.add_edge("fetch_market_data", "extract")
     graph.add_edge("extract", "strategize")
     graph.add_edge("strategize", "synthesize")
@@ -74,7 +81,7 @@ def build_graph():
     graph.add_edge("execute", "monitor")
     graph.add_edge("monitor", "feedback")
     graph.add_edge("feedback", "format")
-    graph.set_finish_point("format")
+    graph.add_edge("format", END)
     return graph.compile()
 
 

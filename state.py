@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Optional, TypedDict
+import operator
+from typing import Annotated, Optional, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -296,13 +297,13 @@ class RunMetadata(BaseModel):
 
 class AgentState(TypedDict):
     metadata: RunMetadata
-    raw_documents: list[RawDocument]
-    technical_data: list[TechnicalSnapshot]
-    extracted_signals: list[ExtractedSignal]
-    strategy_signals: list[StrategySignal]
-    theses: list[TickerThesis]
-    decisions: list[TradeDecision]
-    orders: list[OrderRecord]
+    raw_documents: Annotated[list[RawDocument], operator.add]
+    technical_data: Annotated[list[TechnicalSnapshot], operator.add]
+    extracted_signals: Annotated[list[ExtractedSignal], operator.add]
+    strategy_signals: Annotated[list[StrategySignal], operator.add]
+    theses: Annotated[list[TickerThesis], operator.add]
+    decisions: Annotated[list[TradeDecision], operator.add]
+    orders: Annotated[list[OrderRecord], operator.add]
     portfolio: PortfolioSnapshot
     feedback: FeedbackState
     formatted_report: Optional[str]
