@@ -25,7 +25,44 @@ The source of truth architecture and full blueprint are documented in `PLAN.md`.
    - `python -m venv .venv`
    - `source .venv/bin/activate`
    - `pip install -r requirements.txt`
-4. Bring up local services (Redis, app stack) once compose files are added in later phases.
+4. Run tests:
+   - `.venv/bin/pytest -q`
+
+## Running the System
+
+### Pipeline modes (`main.py`)
+
+- Single run:
+  - `.venv/bin/python main.py --mode single`
+- Continuous scheduler mode:
+  - `.venv/bin/python main.py --mode continuous`
+- Resume from checkpointed run:
+  - `.venv/bin/python main.py --resume-run-id <run_id>`
+- Backtest mode entrypoint (stub):
+  - `.venv/bin/python main.py --mode backtest`
+
+Data written by runs:
+- Checkpoints: `data/checkpoints.db`
+- Audit/run indexes: `data/trading.db`
+- Traces: `traces/<run_id>.jsonl`
+
+### Dashboard API + UI
+
+Start server:
+- `.venv/bin/uvicorn dashboard.app:app --host 127.0.0.1 --port 8000 --reload`
+
+Open dashboard:
+- [http://127.0.0.1:8000](http://127.0.0.1:8000)
+
+Core API endpoints:
+- `GET /api/portfolio`
+- `GET /api/runs`
+- `GET /api/runs/{run_id}`
+- `GET /api/runs/{run_id}/trace`
+- `GET /api/strategies`
+- `GET /api/outcomes`
+
+Note: if API responses are empty, run the pipeline once in `single` mode first so checkpoint/audit data exists.
 
 ## Design Constraints (Locked for V1)
 
