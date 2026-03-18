@@ -1,0 +1,11 @@
+from __future__ import annotations
+
+from agents.base import BaseAgent
+from state import AgentState
+
+
+class MarketDataFetcherAgent(BaseAgent):
+    name = "fetch_market_data"
+
+    async def _execute(self, state: AgentState) -> AgentState:
+        return state

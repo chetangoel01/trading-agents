@@ -1,0 +1,20 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+dist/
+build/
+
+# Runtime artifacts
+traces/*.jsonl
+!traces/.gitkeep
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# Editor/OS
+.DS_Store
+.idea/
+.vscode/
