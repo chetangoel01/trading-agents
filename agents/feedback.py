@@ -1,11 +1,97 @@
 from __future__ import annotations
 
+from collections import defaultdict
+from datetime import UTC, datetime, timedelta
+
 from agents.base import BaseAgent
-from state import AgentState
+from config import ENABLE_AUTO_WEIGHT_REBALANCE
+from state import AgentState, OrderStatus, OutcomeResult, StrategyPerformance, StrategyType, TradeOutcome
 
 
 class FeedbackAgent(BaseAgent):
     name = "feedback"
 
+    @staticmethod
+    def _record_outcome_from_order(order) -> TradeOutcome | None:
+        if order.status != OrderStatus.FILLED or order.filled_price is None:
+            return None
+        now = datetime.now(UTC)
+        entry_price = 100.0
+        pnl_pct = (order.filled_price - entry_price) / entry_price
+        return TradeOutcome(
+            ticker=order.ticker,
+            action=order.action,
+            entry_price=entry_price,
+            exit_price=order.filled_price,
+            quantity=order.filled_quantity or order.quantity,
+            pnl_usd=(order.filled_price - entry_price) * (order.filled_quantity or order.quantity),
+            pnl_pct=pnl_pct,
+            result=OutcomeResult.WIN if pnl_pct > 0 else OutcomeResult.LOSS,
+            holding_duration_hours=1.0,
+            strategy_attribution="momentum",
+            thesis_confidence_at_entry=0.8,
+            exit_reason="execution",
+            opened_at=now - timedelta(hours=1),
+            closed_at=now,
+        )
+
+    @staticmethod
+    def _compute_calibration(outcomes: list[TradeOutcome]) -> dict[str, float]:
+        grouped: dict[str, list[TradeOutcome]] = defaultdict(list)
+        for outcome in outcomes:
+            grouped[outcome.strategy_attribution.value].append(outcome)
+
+        calibration: dict[str, float] = {}
+        for strategy, rows in grouped.items():
+            if not rows:
+                continue
+            avg_conf = sum(r.thesis_confidence_at_entry for r in rows) / len(rows)
+            win_rate = sum(1 for r in rows if r.pnl_pct > 0) / len(rows)
+            # If confidence persistently exceeds realized win rate, reduce multiplier.
+            delta = win_rate - avg_conf
+            calibration[strategy] = max(0.5, min(1.5, 1.0 + delta))
+        return calibration
+
     async def _execute(self, state: AgentState) -> AgentState:
+        feedback = state["feedback"]
+
+        new_outcomes: list[TradeOutcome] = []
+        for order in state["orders"]:
+            outcome = self._record_outcome_from_order(order)
+            if outcome is not None and order.action.value == "sell":
+                new_outcomes.append(outcome)
+
+        if new_outcomes:
+            feedback.outcomes.extend(new_outcomes)
+
+        feedback.confidence_calibration = self._compute_calibration(feedback.outcomes)
+
+        # Lightweight rolling performance summary by strategy.
+        per_strategy: dict[str, list[TradeOutcome]] = defaultdict(list)
+        for outcome in feedback.outcomes:
+            per_strategy[outcome.strategy_attribution.value].append(outcome)
+
+        now = datetime.now(UTC)
+        perf_rows: list[StrategyPerformance] = []
+        for strategy, rows in per_strategy.items():
+            pnl_values = [r.pnl_pct for r in rows]
+            max_drawdown = min(pnl_values) if pnl_values else 0.0
+            win_rate = sum(1 for r in rows if r.pnl_pct > 0) / len(rows)
+            perf_rows.append(
+                StrategyPerformance(
+                    strategy=StrategyType(strategy),
+                    total_trades=len(rows),
+                    win_rate=win_rate,
+                    avg_pnl_pct=sum(pnl_values) / len(pnl_values),
+                    max_drawdown_pct=max_drawdown,
+                    recommended_weight_adjustment=0.0,
+                    period_start=min(r.opened_at for r in rows),
+                    period_end=max(r.closed_at for r in rows),
+                )
+            )
+        feedback.strategy_performance = perf_rows
+
+        if ENABLE_AUTO_WEIGHT_REBALANCE:
+            feedback.last_rebalance_at = now
+
         return state
