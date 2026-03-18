@@ -12,7 +12,7 @@ from events.bus import EventBus
 from graph import build_graph
 from scheduler import ContinuousScheduler, RunKind
 from state import AgentState, FeedbackState, PortfolioSnapshot, RunMetadata
-from utils.checkpoint_store import save_checkpoint
+from utils.checkpoint_store import hydrate_state, load_checkpoint, save_checkpoint
 from utils.logger import get_logger
 from utils.trace import TraceWriter
 
@@ -122,6 +122,18 @@ async def _run_single() -> None:
     )
 
 
+async def _run_resume(run_id: str) -> None:
+    logger = get_logger("main")
+    raw_state = load_checkpoint(run_id)
+    if raw_state is None:
+        raise ValueError(f"No checkpoint found for run_id={run_id}")
+    state = hydrate_state(raw_state)
+    logger.info("resume_start", extra={"extra": {"run_id": run_id}})
+    graph = build_graph()
+    final_state: AgentState = await graph.ainvoke(state)
+    save_checkpoint(run_id, final_state)
+
+
 async def _run_continuous() -> None:
     logger = get_logger("main")
     bus = EventBus()
@@ -158,12 +170,16 @@ def _resolve_run_mode(cli_mode: str | None) -> str:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Trading agents entrypoint")
     parser.add_argument("--mode", choices=["single", "continuous", "backtest"], default=None)
+    parser.add_argument("--resume-run-id", default=None)
     return parser.parse_args()
 
 
 def main() -> None:
     validate_config()
     args = parse_args()
+    if args.resume_run_id:
+        asyncio.run(_run_resume(args.resume_run_id))
+        return
     run_mode = _resolve_run_mode(args.mode)
     if run_mode == "single":
         asyncio.run(_run_single())

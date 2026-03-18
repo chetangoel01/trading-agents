@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
+from main import build_initial_state, bootstrap_metadata
 from utils.audit_store import ensure_schema as ensure_audit_schema
 from utils.audit_store import insert_llm_call
-from utils.checkpoint_store import load_checkpoint, save_checkpoint
+from utils.checkpoint_store import hydrate_state, load_checkpoint, save_checkpoint
 
 
 def test_checkpoint_roundtrip(tmp_path: Path) -> None:
@@ -31,3 +33,29 @@ def test_audit_insert_creates_rows(tmp_path: Path) -> None:
         path=str(db),
     )
     assert db.exists()
+
+
+def test_checkpoint_hydrate_roundtrip_typed_state(tmp_path: Path) -> None:
+    db = tmp_path / "checkpoints.db"
+    metadata = bootstrap_metadata("manual")
+    metadata.started_at = datetime.now(UTC)
+    state = build_initial_state(metadata)
+    payload = {
+        "metadata": state["metadata"].model_dump(mode="json"),
+        "raw_documents": [],
+        "technical_data": [],
+        "extracted_signals": [],
+        "strategy_signals": [],
+        "theses": [],
+        "decisions": [],
+        "orders": [],
+        "portfolio": state["portfolio"].model_dump(mode="json"),
+        "feedback": state["feedback"].model_dump(mode="json"),
+        "formatted_report": state["formatted_report"],
+    }
+    save_checkpoint(metadata.run_id, payload, path=str(db))
+    loaded = load_checkpoint(metadata.run_id, path=str(db))
+    assert loaded is not None
+    hydrated = hydrate_state(loaded)
+    assert hydrated["metadata"].run_id == metadata.run_id
+    assert hydrated["portfolio"].cash == 100000.0

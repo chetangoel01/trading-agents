@@ -10,6 +10,19 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from config import CHECKPOINT_DB_PATH
+from state import (
+    AgentState,
+    ExtractedSignal,
+    FeedbackState,
+    OrderRecord,
+    PortfolioSnapshot,
+    RawDocument,
+    RunMetadata,
+    StrategySignal,
+    TechnicalSnapshot,
+    TickerThesis,
+    TradeDecision,
+)
 
 
 SCHEMA_SQL = """
@@ -62,3 +75,22 @@ def load_checkpoint(run_id: str, path: str = CHECKPOINT_DB_PATH) -> dict[str, An
     if row is None:
         return None
     return json.loads(row[0])
+
+
+def hydrate_state(raw_state: dict[str, Any]) -> AgentState:
+    """Convert JSON checkpoint payload back into typed AgentState models."""
+    return AgentState(
+        metadata=RunMetadata.model_validate(raw_state["metadata"]),
+        raw_documents=[RawDocument.model_validate(x) for x in raw_state.get("raw_documents", [])],
+        technical_data=[TechnicalSnapshot.model_validate(x) for x in raw_state.get("technical_data", [])],
+        extracted_signals=[
+            ExtractedSignal.model_validate(x) for x in raw_state.get("extracted_signals", [])
+        ],
+        strategy_signals=[StrategySignal.model_validate(x) for x in raw_state.get("strategy_signals", [])],
+        theses=[TickerThesis.model_validate(x) for x in raw_state.get("theses", [])],
+        decisions=[TradeDecision.model_validate(x) for x in raw_state.get("decisions", [])],
+        orders=[OrderRecord.model_validate(x) for x in raw_state.get("orders", [])],
+        portfolio=PortfolioSnapshot.model_validate(raw_state["portfolio"]),
+        feedback=FeedbackState.model_validate(raw_state["feedback"]),
+        formatted_report=raw_state.get("formatted_report"),
+    )
