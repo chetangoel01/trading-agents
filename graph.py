@@ -18,6 +18,15 @@ from agents.synthesis import SynthesisAgent
 from state import ActionType, AgentState
 
 
+def project_parallel_fetch_update(state: AgentState) -> dict:
+    """Return only reducer-safe channels for parallel fetch fan-out."""
+    return {
+        "raw_documents": state["raw_documents"],
+        "technical_data": state["technical_data"],
+        "metadata": state["metadata"],
+    }
+
+
 def build_graph():
     """Build and compile the LangGraph pipeline."""
     try:
@@ -40,11 +49,27 @@ def build_graph():
     formatter_agent = FormatterAgent()
 
     graph = StateGraph(AgentState)
-    graph.add_node("fetch_sec", sec_fetcher.run)
-    graph.add_node("fetch_news", news_fetcher.run)
-    graph.add_node("fetch_transcripts", transcript_fetcher.run)
-    graph.add_node("fetch_social", social_fetcher.run)
-    graph.add_node("fetch_market_data", market_data_fetcher.run)
+
+    async def _fetch_sec_node(state: AgentState):
+        return project_parallel_fetch_update(await sec_fetcher.run(state))
+
+    async def _fetch_news_node(state: AgentState):
+        return project_parallel_fetch_update(await news_fetcher.run(state))
+
+    async def _fetch_transcripts_node(state: AgentState):
+        return project_parallel_fetch_update(await transcript_fetcher.run(state))
+
+    async def _fetch_social_node(state: AgentState):
+        return project_parallel_fetch_update(await social_fetcher.run(state))
+
+    async def _fetch_market_data_node(state: AgentState):
+        return project_parallel_fetch_update(await market_data_fetcher.run(state))
+
+    graph.add_node("fetch_sec", _fetch_sec_node)
+    graph.add_node("fetch_news", _fetch_news_node)
+    graph.add_node("fetch_transcripts", _fetch_transcripts_node)
+    graph.add_node("fetch_social", _fetch_social_node)
+    graph.add_node("fetch_market_data", _fetch_market_data_node)
     graph.add_node("extract", extraction_agent.run)
     graph.add_node("strategize", strategy_engine.run)
     graph.add_node("synthesize", synthesis_agent.run)

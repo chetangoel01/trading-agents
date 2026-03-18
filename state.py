@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import Enum
+import json
 import operator
 from typing import Annotated, Optional, TypedDict
 
@@ -293,10 +294,49 @@ class RunMetadata(BaseModel):
     warnings: list[dict] = Field(default_factory=list)
     total_latency_ms: Optional[int] = None
     total_cost_usd: float = 0.0
+    node_costs: dict[str, float] = Field(default_factory=dict)
+
+
+def _merge_unique_str(base: list[str], incoming: list[str]) -> list[str]:
+    seen = set(base)
+    merged = list(base)
+    for item in incoming:
+        if item not in seen:
+            seen.add(item)
+            merged.append(item)
+    return merged
+
+
+def _merge_unique_dict(base: list[dict], incoming: list[dict]) -> list[dict]:
+    merged = list(base)
+    seen = {json.dumps(item, sort_keys=True, default=str) for item in base}
+    for item in incoming:
+        key = json.dumps(item, sort_keys=True, default=str)
+        if key not in seen:
+            seen.add(key)
+            merged.append(item)
+    return merged
+
+
+def merge_run_metadata(left: RunMetadata, right: RunMetadata) -> RunMetadata:
+    """Reducer for parallel graph writes to metadata channel."""
+    merged = left.model_copy(deep=True)
+    merged.completed_nodes = _merge_unique_str(left.completed_nodes, right.completed_nodes)
+    merged.warnings = _merge_unique_dict(left.warnings, right.warnings)
+    merged.errors = _merge_unique_dict(left.errors, right.errors)
+    merged.total_latency_ms = right.total_latency_ms or left.total_latency_ms
+    merged_node_costs = dict(left.node_costs)
+    for node, cost in right.node_costs.items():
+        merged_node_costs[node] = max(merged_node_costs.get(node, 0.0), cost)
+    merged.node_costs = merged_node_costs
+    merged.total_cost_usd = sum(merged_node_costs.values())
+    merged.execution_enabled = right.execution_enabled
+    merged.schedule_run_kind = right.schedule_run_kind or left.schedule_run_kind
+    return merged
 
 
 class AgentState(TypedDict):
-    metadata: RunMetadata
+    metadata: Annotated[RunMetadata, merge_run_metadata]
     raw_documents: Annotated[list[RawDocument], operator.add]
     technical_data: Annotated[list[TechnicalSnapshot], operator.add]
     extracted_signals: Annotated[list[ExtractedSignal], operator.add]
