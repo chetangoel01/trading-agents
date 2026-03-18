@@ -23,6 +23,9 @@ class DecisionAgent(BaseAgent):
         decisions: list[TradeDecision] = []
         portfolio = state["portfolio"]
         held_tickers = {p.ticker for p in portfolio.positions}
+        price_by_ticker: dict[str, float] = {}
+        for snap in state["technical_data"]:
+            price_by_ticker[snap.ticker] = snap.price
 
         for thesis in state["theses"]:
             risk_checks_passed: list[str] = []
@@ -87,7 +90,7 @@ class DecisionAgent(BaseAgent):
                         capped_size / portfolio.total_value if portfolio.total_value > 0 else 0.0
                     )
 
-            entry_ref_price = 100.0
+            entry_ref_price = price_by_ticker.get(thesis.ticker, 100.0)
             stop_loss_price = (
                 entry_ref_price * (1 + STOP_LOSS_PCT) if action == ActionType.BUY else None
             )
@@ -103,6 +106,7 @@ class DecisionAgent(BaseAgent):
                     reasoning=f"direction={thesis.direction.value}",
                     position_size_pct=position_size_pct,
                     position_size_usd=position_size_usd,
+                    entry_price_limit=entry_ref_price if action == ActionType.BUY else None,
                     stop_loss_price=stop_loss_price,
                     take_profit_price=take_profit_price,
                     trailing_stop_pct=TRAILING_STOP_PCT if action == ActionType.BUY else None,

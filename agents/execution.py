@@ -33,14 +33,14 @@ class ExecutionAgent(BaseAgent):
         return 0
 
     @staticmethod
-    def _buy_quantity(decision: TradeDecision) -> int:
-        price = decision.entry_price_limit or 100.0
+    def _buy_quantity(decision: TradeDecision, current_price: float = 100.0) -> int:
+        price = decision.entry_price_limit or current_price
         if price <= 0:
             return 0
         return max(0, floor(decision.position_size_usd / price))
 
     def _simulate_order_records(
-        self, decision: TradeDecision, *, quantity: int, fill_ratio: float = 1.0
+        self, decision: TradeDecision, *, quantity: int, fill_ratio: float = 1.0, current_price: float = 100.0
     ) -> tuple[OrderRecord, OrderRecord | None]:
         now_utc = self._now_provider()
         fill_qty = int(quantity * fill_ratio)
@@ -66,7 +66,7 @@ class ExecutionAgent(BaseAgent):
             stop_price=decision.stop_loss_price,
             trailing_pct=decision.trailing_stop_pct,
             status=status,
-            filled_price=decision.entry_price_limit or 100.0,
+            filled_price=decision.entry_price_limit or current_price,
             filled_quantity=fill_qty if fill_qty > 0 else None,
             filled_at=now_utc if fill_qty > 0 else None,
             rejected_reason="no_fill" if fill_qty == 0 else None,
@@ -99,13 +99,18 @@ class ExecutionAgent(BaseAgent):
                 )
                 return state
 
+        price_by_ticker: dict[str, float] = {}
+        for snap in state["technical_data"]:
+            price_by_ticker[snap.ticker] = snap.price
+
         orders: list[OrderRecord] = []
         for decision in state["decisions"]:
             if decision.action == ActionType.HOLD:
                 continue
 
+            current_price = price_by_ticker.get(decision.ticker, 100.0)
             if decision.action in {ActionType.BUY, ActionType.SCALE_IN}:
-                qty = self._buy_quantity(decision)
+                qty = self._buy_quantity(decision, current_price)
             elif decision.action in {ActionType.SELL, ActionType.SCALE_OUT}:
                 qty = self._position_qty(state, decision.ticker)
             else:
@@ -121,7 +126,7 @@ class ExecutionAgent(BaseAgent):
                 )
                 continue
 
-            primary, remainder = self._simulate_order_records(decision, quantity=qty, fill_ratio=1.0)
+            primary, remainder = self._simulate_order_records(decision, quantity=qty, fill_ratio=1.0, current_price=current_price)
             orders.append(primary)
             if remainder is not None:
                 orders.append(remainder)

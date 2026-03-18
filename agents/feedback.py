@@ -5,18 +5,26 @@ from datetime import UTC, datetime, timedelta
 
 from agents.base import BaseAgent
 from config import ENABLE_AUTO_WEIGHT_REBALANCE
-from state import AgentState, OrderStatus, OutcomeResult, StrategyPerformance, StrategyType, TradeOutcome
+from state import ActionType, AgentState, OrderStatus, OutcomeResult, StrategyPerformance, StrategyType, TradeOutcome
 
 
 class FeedbackAgent(BaseAgent):
     name = "feedback"
 
     @staticmethod
-    def _record_outcome_from_order(order) -> TradeOutcome | None:
+    def _record_outcome_from_order(
+        order,
+        *,
+        entry_price: float = 100.0,
+        strategy_attribution: StrategyType = StrategyType.MOMENTUM,
+        thesis_confidence: float = 0.8,
+        exit_reason: str = "execution",
+    ) -> TradeOutcome | None:
         if order.status != OrderStatus.FILLED or order.filled_price is None:
             return None
         now = datetime.now(UTC)
-        entry_price = 100.0
+        if entry_price <= 0:
+            entry_price = 100.0
         pnl_pct = (order.filled_price - entry_price) / entry_price
         return TradeOutcome(
             ticker=order.ticker,
@@ -28,9 +36,9 @@ class FeedbackAgent(BaseAgent):
             pnl_pct=pnl_pct,
             result=OutcomeResult.WIN if pnl_pct > 0 else OutcomeResult.LOSS,
             holding_duration_hours=1.0,
-            strategy_attribution="momentum",
-            thesis_confidence_at_entry=0.8,
-            exit_reason="execution",
+            strategy_attribution=strategy_attribution,
+            thesis_confidence_at_entry=thesis_confidence,
+            exit_reason=exit_reason,
             opened_at=now - timedelta(hours=1),
             closed_at=now,
         )
@@ -55,10 +63,34 @@ class FeedbackAgent(BaseAgent):
     async def _execute(self, state: AgentState) -> AgentState:
         feedback = state["feedback"]
 
+        # Build lookups for real entry prices and strategy attribution
+        buy_decisions_by_ticker: dict[str, object] = {}
+        for d in state["decisions"]:
+            if d.action == ActionType.BUY and d.ticker not in buy_decisions_by_ticker:
+                buy_decisions_by_ticker[d.ticker] = d
+        positions_by_ticker = {p.ticker: p for p in state["portfolio"].positions}
+
         new_outcomes: list[TradeOutcome] = []
         for order in state["orders"]:
-            outcome = self._record_outcome_from_order(order)
-            if outcome is not None and order.action.value == "sell":
+            if order.action.value != "sell":
+                continue
+            buy_decision = buy_decisions_by_ticker.get(order.ticker)
+            position = positions_by_ticker.get(order.ticker)
+            entry_price = (
+                position.avg_entry_price if position else
+                (buy_decision.entry_price_limit if buy_decision and buy_decision.entry_price_limit else 100.0)
+            )
+            strategy = buy_decision.strategy_attribution if buy_decision else StrategyType.MOMENTUM
+            confidence = buy_decision.confidence if buy_decision else 0.8
+            exit_reason = getattr(order, "rejected_reason", None) or "execution"
+            outcome = self._record_outcome_from_order(
+                order,
+                entry_price=entry_price,
+                strategy_attribution=strategy,
+                thesis_confidence=confidence,
+                exit_reason=exit_reason,
+            )
+            if outcome is not None:
                 new_outcomes.append(outcome)
 
         if new_outcomes:

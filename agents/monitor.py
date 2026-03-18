@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 from agents.base import BaseAgent
 from config import MAX_DRAWDOWN_PCT, STOP_LOSS_PCT, TAKE_PROFIT_PCT, TRAILING_STOP_PCT
-from state import ActionType, AgentState, TradeDecision
+from state import ActionType, AgentState, StrategyType, TradeDecision
 
 
 class MonitorAgent(BaseAgent):
@@ -47,7 +47,7 @@ class MonitorAgent(BaseAgent):
                     strategy_attribution=(
                         state["decisions"][0].strategy_attribution
                         if state["decisions"]
-                        else "fundamental"
+                        else StrategyType.FUNDAMENTAL
                     ),
                     risk_checks_passed=["monitor_trigger"],
                     risk_checks_failed=[],
@@ -58,9 +58,6 @@ class MonitorAgent(BaseAgent):
             portfolio.daily_trades_count += 1
             if reason == "stop_loss":
                 portfolio.last_loss_at = now_utc
-
-        if decisions:
-            state["decisions"] = decisions
 
         if portfolio.total_value > 0:
             portfolio.total_exposure_pct = min(
@@ -75,4 +72,4 @@ class MonitorAgent(BaseAgent):
                     {"agent": self.name, "warning": "kill switch threshold reached in monitoring"}
                 )
 
-        return state
+        return {"decisions": decisions, "portfolio": portfolio, "metadata": state["metadata"]}
