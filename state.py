@@ -285,6 +285,8 @@ class RunMetadata(BaseModel):
     tickers: list[str]
     trigger: str
     run_mode: str
+    schedule_run_kind: Optional[str] = None
+    execution_enabled: bool = True
     completed_nodes: list[str] = Field(default_factory=list)
     errors: list[dict] = Field(default_factory=list)
     warnings: list[dict] = Field(default_factory=list)
