@@ -5,7 +5,10 @@ from pathlib import Path
 
 from main import build_initial_state, bootstrap_metadata
 from utils.audit_store import ensure_schema as ensure_audit_schema
+from utils.audit_store import finalize_run_record
 from utils.audit_store import insert_llm_call
+from utils.audit_store import insert_run_record_start
+from utils.audit_store import list_recent_runs
 from utils.checkpoint_store import hydrate_state, load_checkpoint, save_checkpoint
 
 
@@ -59,3 +62,33 @@ def test_checkpoint_hydrate_roundtrip_typed_state(tmp_path: Path) -> None:
     hydrated = hydrate_state(loaded)
     assert hydrated["metadata"].run_id == metadata.run_id
     assert hydrated["portfolio"].cash == 100000.0
+
+
+def test_run_record_roundtrip_for_dashboard_queries(tmp_path: Path) -> None:
+    db = tmp_path / "trading.db"
+    ensure_audit_schema(path=str(db))
+    insert_run_record_start(
+        run_id="run-42",
+        started_at=datetime(2026, 3, 18, 14, 30, tzinfo=UTC),
+        trigger="schedule",
+        run_mode="continuous",
+        run_kind="full_execution",
+        execution_enabled=True,
+        path=str(db),
+    )
+    finalize_run_record(
+        run_id="run-42",
+        status="completed",
+        warnings_count=1,
+        errors_count=0,
+        total_cost_usd=0.42,
+        path=str(db),
+    )
+    rows = list_recent_runs(limit=10, path=str(db))
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["run_id"] == "run-42"
+    assert row["status"] == "completed"
+    assert row["warnings_count"] == 1
+    assert row["errors_count"] == 0
+    assert row["total_cost_usd"] == 0.42
