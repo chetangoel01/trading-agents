@@ -6,7 +6,7 @@ Purpose: allow a clean-session resume without re-discovering state.
 
 - Branch: `master`
 - Test command: `.venv/bin/pytest -q`
-- Current result: `37 passed`
+- Current result: `43 passed`
 - Untracked by design: `PLAN.md`
 
 ## Commit Trail (Chronological)
@@ -17,6 +17,8 @@ Purpose: allow a clean-session resume without re-discovering state.
 4. `84f1b5e` Implement decision risk gates and position sizing engine.
 5. `0f5273a` Implement execution window gating and simulated fill handling.
 6. `bae662d` Add monitor-driven exits and feedback calibration baseline.
+7. `8b0fe77` Implement transcript, social, and market-data fetchers with indicators.
+8. `b172330` Implement extraction and synthesis agents with ticker-scoped failover.
 
 ## What Is Implemented
 
@@ -28,29 +30,19 @@ Purpose: allow a clean-session resume without re-discovering state.
 - Execution rules for non-execution windows, market-closed drops, and partial-fill bookkeeping.
 - Monitor agent stop/take-profit/trailing-stop exits.
 - Feedback agent baseline outcomes + calibration/performance summaries.
+- Transcript/social/market-data fetchers and technical indicator derivation.
+- Extraction/synthesis LLM pipelines with per-ticker failure isolation.
+- LLM call metadata indexing in SQLite and full prompt/response trace logging.
 
 ## Highest-Priority Next Tasks (From PLAN.md)
 
-### 1) Complete remaining fetchers and technical data
-
-- Implement `agents/fetchers/transcript.py` with graceful no-transcript behavior.
-- Implement `agents/fetchers/social.py` for Reddit-first sentiment ingestion.
-- Implement `agents/fetchers/market_data.py` for OHLCV + indicator computation.
-- Add fixture-driven tests for each fetcher.
-
-### 2) Implement extraction + synthesis with LLM routing
-
-- Build extraction prompt path and structured parsing in `agents/extraction.py`.
-- Build synthesis prompt path and thesis generation in `agents/synthesis.py`.
-- Ensure per-ticker failure isolation (`HOLD` on failed ticker, continue others).
-- Persist LLM call metadata to SQLite index and full prompt/response to trace.
-
-### 3) Finish graph fan-out/fan-in shape
+### 1) Finish graph fan-out/fan-in shape
 
 - Replace current sequential fetch chain with true parallel fetch fan-out + reducer-compatible state behavior.
 - Keep single `run_id` across all tickers.
+- Add graph-level tests for parallel fetch merge behavior.
 
-### 4) Scheduler/event integration
+### 2) Scheduler/event integration
 
 - Wire `events/bus.py` into `scheduler.py` + `main.py`.
 - Enforce ET windows:
@@ -59,12 +51,12 @@ Purpose: allow a clean-session resume without re-discovering state.
   - 16:15 feedback-only
   - midnight trace cleanup
 
-### 5) Persistence hardening
+### 3) Persistence hardening
 
 - Add explicit checkpoint reload/resume path.
 - Expand SQLite schema for run-level indexing/query.
 
-### 6) Dashboard + notifications foundation
+### 4) Dashboard + notifications foundation
 
 - Add FastAPI endpoints for portfolio/runs/strategies.
 - Add Slack + email notifier stubs and tests.
@@ -77,4 +69,4 @@ git status --short
 .venv/bin/pytest -q
 ```
 
-Then proceed with Task 1 (remaining fetchers) using TDD-first cycles.
+Then proceed with Task 1 (parallel graph fan-out/fan-in) using TDD-first cycles.
