@@ -6,7 +6,7 @@ Purpose: allow a clean-session resume without re-discovering state.
 
 - Branch: `master`
 - Test command: `.venv/bin/pytest -q`
-- Current result: `43 passed`
+- Current result: `45 passed`
 - Untracked by design: `PLAN.md`
 
 ## Commit Trail (Chronological)
@@ -19,6 +19,7 @@ Purpose: allow a clean-session resume without re-discovering state.
 6. `bae662d` Add monitor-driven exits and feedback calibration baseline.
 7. `8b0fe77` Implement transcript, social, and market-data fetchers with indicators.
 8. `b172330` Implement extraction and synthesis agents with ticker-scoped failover.
+9. `83d5a3f` Switch graph fetch stage to parallel fan-out/fan-in.
 
 ## What Is Implemented
 
@@ -36,13 +37,7 @@ Purpose: allow a clean-session resume without re-discovering state.
 
 ## Highest-Priority Next Tasks (From PLAN.md)
 
-### 1) Finish graph fan-out/fan-in shape
-
-- Replace current sequential fetch chain with true parallel fetch fan-out + reducer-compatible state behavior.
-- Keep single `run_id` across all tickers.
-- Add graph-level tests for parallel fetch merge behavior.
-
-### 2) Scheduler/event integration
+### 1) Scheduler/event integration
 
 - Wire `events/bus.py` into `scheduler.py` + `main.py`.
 - Enforce ET windows:
@@ -51,12 +46,12 @@ Purpose: allow a clean-session resume without re-discovering state.
   - 16:15 feedback-only
   - midnight trace cleanup
 
-### 3) Persistence hardening
+### 2) Persistence hardening
 
 - Add explicit checkpoint reload/resume path.
 - Expand SQLite schema for run-level indexing/query.
 
-### 4) Dashboard + notifications foundation
+### 3) Dashboard + notifications foundation
 
 - Add FastAPI endpoints for portfolio/runs/strategies.
 - Add Slack + email notifier stubs and tests.
@@ -69,4 +64,4 @@ git status --short
 .venv/bin/pytest -q
 ```
 
-Then proceed with Task 1 (parallel graph fan-out/fan-in) using TDD-first cycles.
+Then proceed with Task 1 (scheduler/event integration) using TDD-first cycles.
