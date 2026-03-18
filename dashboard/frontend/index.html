@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Trading Agents Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="texture"></div>
+    <main class="shell">
+      <header class="hero">
+        <p class="eyebrow">TRADING SYSTEM CONTROL ROOM</p>
+        <h1>Trading Agents Dashboard</h1>
+        <p class="subtitle">Live portfolio telemetry, run diagnostics, and strategy momentum.</p>
+      </header>
+
+      <section class="grid">
+        <article class="panel panel-primary">
+          <h2>Portfolio</h2>
+          <div id="portfolio-content" class="metric-block">Loading...</div>
+        </article>
+
+        <article class="panel">
+          <h2>Latest Runs</h2>
+          <ul id="runs-content" class="list-block"></ul>
+        </article>
+
+        <article class="panel panel-wide">
+          <h2>Strategies</h2>
+          <ul id="strategies-content" class="list-block"></ul>
+        </article>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
