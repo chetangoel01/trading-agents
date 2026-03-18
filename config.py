@@ -139,9 +139,16 @@ AUTO_WEIGHT_REBALANCE_ONLY_AT_CLOSE = True
 # ---------------------------------------------------------------------------
 SEC_FILING_TYPES = ["10-K", "10-Q", "8-K"]
 SEC_MAX_FILINGS_PER_TICKER = 3
+SEC_REQUESTS_PER_SECOND = 10
+SEC_BASE_URL = "https://efts.sec.gov/LATEST/search-index"
+SEC_LOOKBACK_DAYS = 90
 
 NEWS_LOOKBACK_HOURS = 72
 NEWS_MAX_ARTICLES_PER_TICKER = 15
+NEWS_RSS_FEEDS = ["https://feeds.finance.yahoo.com/rss/2.0/headline"]
+FINNHUB_REQUESTS_PER_MINUTE = 60
+REDDIT_REQUESTS_PER_MINUTE = 30
+OPENROUTER_REQUESTS_PER_MINUTE = 100
 
 TRANSCRIPT_LOOKBACK_QUARTERS = 2
 
@@ -151,6 +158,12 @@ SOCIAL_MIN_UPVOTES = 50
 ENABLE_STOCKTWITS = os.getenv("ENABLE_STOCKTWITS", "false").lower() == "true"
 
 TECHNICAL_LOOKBACK_DAYS = 90
+
+CACHE_TTL_SEC_FILINGS = 86400
+CACHE_TTL_NEWS = 3600
+CACHE_TTL_TRANSCRIPTS = 86400
+CACHE_TTL_SOCIAL = 1800
+CACHE_TTL_MARKET_DATA = 300
 
 
 # ---------------------------------------------------------------------------

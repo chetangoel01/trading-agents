@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import os
 from pathlib import Path
 
 from scheduler import RunKind, classify_run_time, cleanup_old_traces, make_schedule_decision
@@ -44,12 +45,12 @@ def test_cleanup_old_traces_deletes_files_older_than_retention(tmp_path: Path) -
     old_file = tmp_path / "old.jsonl"
     old_file.write_text("x", encoding="utf-8")
     old_dt = datetime(2025, 1, 1, tzinfo=UTC).timestamp()
-    old_file.touch(times=(old_dt, old_dt))
+    os.utime(old_file, times=(old_dt, old_dt))
 
     fresh_file = tmp_path / "fresh.jsonl"
     fresh_file.write_text("y", encoding="utf-8")
     fresh_dt = datetime(2026, 3, 10, tzinfo=UTC).timestamp()
-    fresh_file.touch(times=(fresh_dt, fresh_dt))
+    os.utime(fresh_file, times=(fresh_dt, fresh_dt))
 
     deleted = cleanup_old_traces(
         trace_dir=tmp_path,
