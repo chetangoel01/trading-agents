@@ -131,5 +131,5 @@ class ExecutionAgent(BaseAgent):
             if remainder is not None:
                 orders.append(remainder)
 
-        state["orders"].extend(orders)
+        state["orders"] = orders
         return state

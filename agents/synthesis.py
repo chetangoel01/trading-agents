@@ -21,7 +21,8 @@ class SynthesisAgent(BaseAgent):
 
     @staticmethod
     def _response_content(body: dict[str, Any]) -> str:
-        return body.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+        content = body.get("choices", [{}])[0].get("message", {}).get("content", "")
+        return content if content else "{}"
 
     async def _call_synthesis_llm(self, ticker: str, payload: dict[str, Any]):
         prompt = (
@@ -74,8 +75,26 @@ class SynthesisAgent(BaseAgent):
 
         for ticker in state["metadata"].tickers:
             started = perf_counter()
+            # Summarise extracted signals to avoid exceeding model context limits.
+            # Limit to the most informative signals per ticker (those with metrics or sentiments).
+            ticker_signals = by_ticker_extract.get(ticker, [])
+            ticker_signals.sort(key=lambda s: len(s.metrics) + len(s.sentiments), reverse=True)
+            signals_summary = []
+            for s in ticker_signals[:15]:
+                signals_summary.append({
+                    "source_type": s.source_type,
+                    "metrics": [m.model_dump(mode="json") for m in s.metrics],
+                    "sentiments": [
+                        {"direction": st.direction, "confidence": st.confidence, "key_phrase": st.key_phrase}
+                        for st in s.sentiments
+                    ],
+                    "risks": [{"description": r.description, "severity": r.severity} for r in s.risks],
+                    "key_events": s.key_events,
+                    "management_guidance": s.management_guidance,
+                    "insider_activity": s.insider_activity,
+                })
             payload = {
-                "signals": [s.model_dump(mode="json") for s in by_ticker_extract.get(ticker, [])],
+                "signals": signals_summary,
                 "strategy_signals": [
                     s.model_dump(mode="json") for s in by_ticker_strategy.get(ticker, [])
                 ],
@@ -85,9 +104,16 @@ class SynthesisAgent(BaseAgent):
                 body, meta = await self._call_synthesis_llm(ticker, payload)
                 content = self._response_content(body)
                 parsed = json.loads(content) if isinstance(content, str) else {}
+                raw_direction = str(parsed.get("direction", "neutral")).lower()
+                if "bullish" in raw_direction:
+                    direction = "bullish"
+                elif "bearish" in raw_direction:
+                    direction = "bearish"
+                else:
+                    direction = "neutral"
                 thesis = TickerThesis(
                     ticker=ticker,
-                    direction=parsed.get("direction", "neutral"),
+                    direction=direction,
                     confidence=float(parsed.get("confidence", 0.0)),
                     summary=parsed.get("summary", "No summary"),
                     bull_case=parsed.get("bull_case", "N/A"),

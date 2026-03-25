@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from time import perf_counter
 from typing import Any
@@ -10,12 +11,15 @@ from state import (
     AgentState,
     ExtractedSignal,
     FinancialMetric,
+    RawDocument,
     RiskFactor,
     SentimentSignal,
 )
 from utils.audit_store import insert_llm_call
 from utils.llm import LLMClient
 from utils.trace import TraceWriter
+
+MAX_CONCURRENT_EXTRACTIONS = 10
 
 
 class ExtractionAgent(BaseAgent):
@@ -24,10 +28,12 @@ class ExtractionAgent(BaseAgent):
     def __init__(self, llm_client: LLMClient | None = None) -> None:
         super().__init__()
         self.llm = llm_client or LLMClient()
+        self._semaphore = asyncio.Semaphore(MAX_CONCURRENT_EXTRACTIONS)
 
     @staticmethod
     def _response_content(body: dict[str, Any]) -> str:
-        return body.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+        content = body.get("choices", [{}])[0].get("message", {}).get("content", "")
+        return content if content else "{}"
 
     async def _call_extraction_llm(self, ticker: str, content: str) -> tuple[dict[str, Any], Any]:
         prompt = (
@@ -65,12 +71,11 @@ class ExtractionAgent(BaseAgent):
                 continue
         return out
 
-    async def _execute(self, state: AgentState) -> AgentState:
-        run_id = state["metadata"].run_id
-        trace = TraceWriter(run_id)
-        output: list[ExtractedSignal] = []
-
-        for doc in state["raw_documents"]:
+    async def _extract_one(
+        self, doc: RawDocument, run_id: str, trace: TraceWriter,
+    ) -> ExtractedSignal | None:
+        """Extract signals from a single document. Returns None on failure."""
+        async with self._semaphore:
             started = perf_counter()
             try:
                 body, meta = await self._call_extraction_llm(doc.ticker, doc.content)
@@ -103,6 +108,9 @@ class ExtractionAgent(BaseAgent):
                     except Exception:
                         continue
 
+                raw_guidance = parsed.get("management_guidance")
+                raw_insider = parsed.get("insider_activity")
+
                 signal = ExtractedSignal(
                     source_doc_hash=doc.content_hash,
                     ticker=doc.ticker,
@@ -110,13 +118,21 @@ class ExtractionAgent(BaseAgent):
                     metrics=self._parse_metrics(parsed.get("metrics", [])),
                     sentiments=sentiments,
                     risks=risks,
-                    key_events=list(parsed.get("key_events", [])),
-                    management_guidance=parsed.get("management_guidance"),
-                    insider_activity=parsed.get("insider_activity"),
+                    key_events=[
+                        str(e) if not isinstance(e, str) else e
+                        for e in parsed.get("key_events", [])
+                    ],
+                    management_guidance=(
+                        json.dumps(raw_guidance) if isinstance(raw_guidance, (dict, list))
+                        else raw_guidance
+                    ),
+                    insider_activity=(
+                        json.dumps(raw_insider) if isinstance(raw_insider, (dict, list))
+                        else raw_insider
+                    ),
                     extraction_model=meta.model,
                     extraction_latency_ms=meta.latency_ms,
                 )
-                output.append(signal)
                 trace.write(
                     "llm_call",
                     node=self.name,
@@ -142,15 +158,9 @@ class ExtractionAgent(BaseAgent):
                     latency_ms=meta.latency_ms,
                     success=True,
                 )
+                return signal
             except Exception as exc:
                 latency_ms = int((perf_counter() - started) * 1000)
-                state["metadata"].warnings.append(
-                    {
-                        "agent": self.name,
-                        "ticker": doc.ticker,
-                        "warning": f"extraction failed: {exc}",
-                    }
-                )
                 trace.write(
                     "llm_call",
                     node=self.name,
@@ -178,7 +188,27 @@ class ExtractionAgent(BaseAgent):
                     success=False,
                     error=str(exc),
                 )
-                continue
+                return None
+
+    async def _execute(self, state: AgentState) -> AgentState:
+        run_id = state["metadata"].run_id
+        trace = TraceWriter(run_id)
+
+        results = await asyncio.gather(
+            *(self._extract_one(doc, run_id, trace) for doc in state["raw_documents"])
+        )
+
+        docs = state["raw_documents"]
+        output = [sig for sig in results if sig is not None]
+        failed_tickers = {docs[i].ticker for i, sig in enumerate(results) if sig is None}
+        if failed_tickers:
+            state["metadata"].warnings.append(
+                {
+                    "agent": self.name,
+                    "warning": f"{len(results) - len(output)}/{len(results)} extractions failed",
+                    "tickers": sorted(failed_tickers),
+                }
+            )
 
         state["extracted_signals"] = output
         return state
